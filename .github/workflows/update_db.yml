@@ -12,6 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
       
       - uses: actions/setup-python@v5
@@ -27,11 +28,26 @@ jobs:
       - name: Update Database
         run: python scripts/updater.py
       
+      - name: Check for changes
+        id: check_changes
+        run: |
+          git diff --quiet data/saudi_league_complete.db || echo "changed=true" >> $GITHUB_OUTPUT
+      
       - name: Commit and push changes
+        if: steps.check_changes.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
           git add data/saudi_league_complete.db
-          git diff --quiet && git diff --staged --quiet || git commit -m "🔄 Update $(date '+%Y-%m-%d')"
-          git push
+          git commit -m "🔄 Update database $(date '+%Y-%m-%d %H:%M')"
+          
+          # Pull latest changes and rebase
+          git fetch origin main
+          git rebase origin/main || {
+            # If rebase fails, use force push
+            git rebase --abort
+            git push --force-with-lease origin main
+            exit 0
+          }
+          
+          git push origin main
